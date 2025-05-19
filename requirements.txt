@@ -1,0 +1,5 @@
+aiogram==3.19.0
+python-dotenv==1.1.0
+colorama==0.4.6
+SQLAlchemy==2.0.41
+aiomysql==0.2.0
