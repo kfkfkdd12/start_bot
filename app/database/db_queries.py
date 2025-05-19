@@ -1,11 +1,11 @@
 from sqlalchemy.future import select
 from sqlalchemy import update, func, insert, delete
 from datetime import datetime, timedelta
-import stars_bot.app.database.database as db
-from stars_bot.app.database.database import AsyncSessionFactory, User, OP1Channel, OP2Channel, OP1Text, OP2Text, WelcomeMessage, FinalMessage, ReferralLink, Autopost, AutopostSent
+from . import database as db
+from .database import AsyncSessionFactory
 from sqlalchemy.exc import OperationalError
 from typing import Optional, List
-from stars_bot.config import Config
+from config import Config
 import random
 import string
 from sqlalchemy import and_
@@ -49,12 +49,12 @@ async def get_all_users():
     """
     async with AsyncSessionFactory() as session:
         async with session.begin():
-            stmt = select(User)
+            stmt = select(db.User)
             result = await session.execute(stmt)
             return result.scalars().all()
 
 
-async def get_user_by_id(user_id: int):
+async def get_user(user_id: int):
     """
     Получает пользователя по его ID.
     
@@ -66,8 +66,22 @@ async def get_user_by_id(user_id: int):
     """
     async with AsyncSessionFactory() as session:
         async with session.begin():
-            stmt = select(User).filter(User.user_id == user_id)
+            stmt = select(db.User).filter(db.User.user_id == user_id)
             result = await session.execute(stmt)
             return result.scalars().first()
 
 
+async def get_invite_count(user_id: int) -> int:
+    """Получает количество приглашенных пользователей (рефералов)
+    
+    Args:
+        user_id (int): ID пользователя
+        
+    Returns:
+        int: Количество приглашенных пользователей
+    """
+    async with AsyncSessionFactory() as session:
+        result = await session.execute(
+            select(func.count()).select_from(db.User).filter(db.User.referred_by == int(user_id))
+        )
+        return result.scalar_one() or 0

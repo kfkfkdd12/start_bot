@@ -54,4 +54,22 @@ class OPChannel(Base):
     limit = Column(Integer, default=10000)
     is_active = Column(Boolean, default=True)
 
-class 
+
+class TaskChannel(Base):
+    __tablename__ = 'task_channels'
+
+    id = Column(Integer, primary_key=True)
+    channel_id = Column(BigInteger, index=True, nullable=False)
+    url = Column(String(255))
+    reward = Column(Float)
+    name = Column(String(255))
+    limit = Column(Integer, default=10000)
+    is_active = Column(Boolean, default=True)
+
+
+class AdPost(Base):
+    __tablename__ = 'ad_posts'
+
+    id = Column(Integer, primary_key=True)
+    url = Column(String(255))
+    text = Column(String(255))

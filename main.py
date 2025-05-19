@@ -1,14 +1,13 @@
 import logging
 import asyncio
 from colorama import init, Fore, Style
-from aiogram import Bot, Dispatcher, types
-from aiogram.client.default import DefaultBotProperties
 from aiogram.enums import ParseMode
 
 from config import Config
-
 from app.database.database import create_all_tables
-
+from app.servise import subscribes_service
+from app.bot import bot, dp  # Импортируем только бота и диспетчер, роутер уже подключен
+from app.user.handlers import r as user_r
 # Инициализация colorama
 init()
 
@@ -36,7 +35,7 @@ logger.addHandler(console_handler)
 logging.getLogger('aiogram').setLevel(logging.WARNING)
 logging.getLogger('aiogram.event').setLevel(logging.WARNING)
 
-async def notify_admins(bot: Bot):
+async def notify_admins():
     """Отправка уведомления админам о запуске бота"""
     message = (
         "🚀 <b>Бот успешно запущен!</b>\n\n"
@@ -56,21 +55,43 @@ async def main():
     logger.info(f"{Fore.YELLOW}👨‍💻 Tg Developer: {Fore.MAGENTA}gidddra{Style.RESET_ALL}")
     logger.info(f"{Fore.CYAN}{'~' * 50}\n")
 
-    # Инициализируем бота и диспетчер
-    bot = Bot(
-        token=Config.BOT_TOKEN,
-        default=DefaultBotProperties(parse_mode=ParseMode.HTML)
-    )
-    dp = Dispatcher()
- 
     try:
-        # Запускаем бота
+        #подключаем роутеры
+        dp.include_router(user_r)
+
+        # Проверяем подключение бота
+        bot_info = await bot.get_me()
+        logger.info(f"Бот успешно подключен: @{bot_info.username}")
+
+        # Регистрируем обработчики сервиса подписок
+        dp.chat_join_request.register(subscribes_service.on_chat_member_update)
+        logger.info("Обработчик заявок на вступление зарегистрирован")
+        
+        # Создаем таблицы
         await create_all_tables()
-        await notify_admins(bot)  # Отправляем уведомления админам
+        logger.info("База данных инициализирована")
+        
+        # Отправляем уведомления админам
+        await notify_admins()
+        logger.info("Уведомления админам отправлены")
+        
+        # Запускаем бота
+        logger.info("Запускаем поллинг...")
         await dp.start_polling(bot)
+        logger.info("Бот запущен")
+
+    except Exception as e:
+        logger.error(f"Ошибка при запуске бота: {e}")
+        raise
     finally:
         # Останавливаем сервис автопостов при завершении работы
         await bot.session.close()
+        logger.info("Бот остановлен")
 
 if __name__ == '__main__':
-    asyncio.run(main())
+    try:
+        asyncio.run(main())
+    except KeyboardInterrupt:
+        logger.info("Бот остановлен пользователем")
+    except Exception as e:
+        logger.error(f"Критическая ошибка: {e}")
