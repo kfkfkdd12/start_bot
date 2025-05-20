@@ -15,8 +15,8 @@ class Config:
     DB_PASSWORD = os.getenv("DB_PASSWORD")
     DB_NAME = os.getenv("DB_NAME")
 
-    BOT_USERNAME = os.getenv("BOT_USERNAME")
-
+    CHAT_URL = os.getenv("CHAT_URL")
+    REVIEWS_URL = os.getenv("REVIEWS_URL")
 
 
     

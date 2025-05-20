@@ -3,6 +3,7 @@ from aiogram.types import (InlineKeyboardMarkup, InlineKeyboardButton,
 from urllib.parse import quote
 from ..bot import bot
 
+from config import Config
 async def get_share_keyboard(user_id: int) -> InlineKeyboardMarkup:
     """Создает клавиатуру с кнопкой шаринга"""
     bot_info = await bot.get_me()
@@ -25,19 +26,29 @@ async def get_share_keyboard(user_id: int) -> InlineKeyboardMarkup:
     return InlineKeyboardMarkup(inline_keyboard=keyboard)
 
 main = ReplyKeyboardMarkup(keyboard=[
-    [KeyboardButton(text="🌟Получить звезды")],
-    [KeyboardButton(text="👤Профиль"),
-      KeyboardButton(text="📚Задания"), 
-      KeyboardButton(text="🗒Отзывы")],
-    [KeyboardButton(text="🏅Промокод"), 
-     KeyboardButton(text="💳Вывести"),
-       KeyboardButton(text="📕Помощь")],
+    [KeyboardButton(text="🌟 Получить звезды")],
+    [KeyboardButton(text="👤 Профиль"),
+      KeyboardButton(text="📚 Задания"), 
+      KeyboardButton(text="🗒 Отзывы")],
+    [KeyboardButton(text="🏅 Промокод"), 
+     KeyboardButton(text="💳 Вывести"),
+       KeyboardButton(text="📕 Помощь")],
 ], resize_keyboard=True)
 
 
+profile = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="🌟 Пополнить депозит", callback_data="deposit")]
+])
 
 
+reviews = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="💬 Наш чат", url=Config.CHAT_URL)],
+    [InlineKeyboardButton(text=" Наши отзывы", url=Config.REVIEWS_URL)]
+])
 
+promo_cancel = InlineKeyboardMarkup(inline_keyboard=[
+    [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_promo")]
+])
 
 
 

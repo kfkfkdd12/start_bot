@@ -85,3 +85,53 @@ async def get_invite_count(user_id: int) -> int:
             select(func.count()).select_from(db.User).filter(db.User.referred_by == int(user_id))
         )
         return result.scalar_one() or 0
+
+async def get_promo_code(code: str):
+    """Получить промокод по коду"""
+    async with AsyncSessionFactory() as session:
+        stmt = select(db.PromoCode).where(
+            db.PromoCode.code == code,
+            db.PromoCode.is_active == True
+        )
+        result = await session.execute(stmt)
+        return result.scalar_one_or_none()
+
+async def check_promo_activation(user_id: int, promo_code_id: int):
+    """Проверить, активировал ли пользователь промокод"""
+    async with AsyncSessionFactory() as session:
+        stmt = select(db.PromoCodeActivation).where(
+            db.PromoCodeActivation.user_id == user_id,
+            db.PromoCodeActivation.promo_code_id == promo_code_id
+        )
+        result = await session.execute(stmt)
+        return result.first() is not None
+
+async def activate_promo_code(user_id: int, promo_code: db.PromoCode) -> bool:
+    """Активировать промокод для пользователя"""
+    async with AsyncSessionFactory() as session:
+        async with session.begin():
+            # Проверяем, не активировал ли пользователь этот промокод ранее
+            if await check_promo_activation(user_id, promo_code.id):
+                return False
+            
+            # Проверяем, не превышен ли лимит активаций
+            if promo_code.current_activations >= promo_code.max_activations:
+                return False
+            
+            # Создаем запись об активации
+            activation = db.PromoCodeActivation(
+                user_id=user_id,
+                promo_code_id=promo_code.id
+            )
+            session.add(activation)
+            
+            # Увеличиваем счетчик активаций
+            promo_code.current_activations += 1
+            
+            # Начисляем награду пользователю
+            user = await get_user(user_id)
+            if user:
+                user.balans += promo_code.reward
+                await session.commit()
+                return True
+            return False
