@@ -7,216 +7,257 @@ import app.database.db_queries as qu
 from aiogram import Router
 from aiogram.fsm.context import FSMContext
 from aiogram.filters.state import State, StatesGroup
+from aiogram.filters import Command
 from aiogram.types import Message, CallbackQuery, InlineKeyboardButton, InlineKeyboardMarkup
+from datetime import datetime
 
 router = Router()
-broadcast_cancelled = False
+logger = logging.getLogger(__name__)
 
-class ConfigStates(StatesGroup):
-    waiting_for_broadcast_message = State()
-    waiting_for_broadcast_photo = State()
-    waiting_for_broadcast_button = State()
-
-async def broadcast_message(bot: Bot, message: str, photo: str = None, button_text: str = None, button_url: str = None):
-    global broadcast_cancelled
-    broadcast_cancelled = False
-
-    users = await qu.get_all_users()
-    
-    success_count = 0
-    failure_count = 0
-    bot_info = await bot.get_me()
-    cancel_keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-        [types.InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="cancel_broadcast")]
+# Клавиатуры для рассылки
+def get_cancel_broadcast_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для отмены рассылки"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_broadcast_preview")]
     ])
-    progress_message_id = None
-    for i, user in enumerate(users):
+
+def get_confirm_broadcast_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для подтверждения рассылки"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="✅ Подтвердить", callback_data="confirm_broadcast"),
+            InlineKeyboardButton(text="❌ Отменить", callback_data="cancel_broadcast_preview")
+        ]
+    ])
+
+def get_cancel_broadcast_progress_keyboard() -> InlineKeyboardMarkup:
+    """Клавиатура для отмены рассылки во время процесса"""
+    return InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(text="❌ Остановить рассылку", callback_data="cancel_broadcast_progress")]
+    ])
+
+class BroadcastStates(StatesGroup):
+    waiting_for_message = State()
+    waiting_for_confirmation = State()
+
+# Глобальные переменные для отслеживания рассылки
+broadcast_in_progress = False
+broadcast_cancelled = False
+broadcast_stats = {
+    'total': 0,
+    'success': 0,
+    'failed': 0,
+    'start_time': None,
+    'end_time': None
+}
+broadcast_message = None  # Сохраняем сообщение для рассылки
+
+@router.callback_query(F.data == "broadcast")
+async def start_broadcast(callback: CallbackQuery, state: FSMContext):
+    """Начало процесса рассылки"""
+    if callback.from_user.id not in Config.ADMIN_IDS:
+        await callback.answer("❌ У вас нет прав для выполнения этого действия", show_alert=True)
+        return
+    
+    if broadcast_in_progress:
+        await callback.answer("❌ Рассылка уже в процессе", show_alert=True)
+        return
+    
+    await state.set_state(BroadcastStates.waiting_for_message)
+    await callback.message.edit_text(
+        "📢 <b>Отправьте сообщение для рассылки</b>\n\n"
+        "Вы можете отправить:\n"
+        "• Текст с форматированием\n"
+        "• Фото с текстом\n"
+        "• Кнопки\n\n"
+        "Сообщение будет отправлено всем пользователям бота.",
+        reply_markup=get_cancel_broadcast_keyboard(),
+        parse_mode="HTML"
+    )
+
+@router.message(BroadcastStates.waiting_for_message)
+async def process_broadcast_message(message: Message, state: FSMContext, bot: Bot):
+    """Обработка сообщения для рассылки"""
+    global broadcast_message
+    
+    if message.from_user.id not in Config.ADMIN_IDS:
+        return
+    
+    # Сохраняем сообщение для рассылки
+    broadcast_message = message
+    
+    # Сначала отправляем само сообщение для рассылки
+    if message.photo:
+        await message.answer_photo(
+            message.photo[-1].file_id,
+            caption=message.html_text if message.caption_entities else message.caption,
+            reply_markup=message.reply_markup,
+            parse_mode="HTML" if message.caption_entities else None
+        )
+    else:
+        await message.answer(
+            message.html_text if message.entities else message.text,
+            reply_markup=message.reply_markup,
+            parse_mode="HTML" if message.entities else None
+        )
+    
+    # Затем отправляем предпросмотр сообщения
+    preview_text = "📢 <b>Предпросмотр сообщения для рассылки</b>\n\n"
+    preview_text += "Сообщение будет отправлено всем пользователям бота.\n"
+    preview_text += "Подтвердите или отмените рассылку:"
+    
+    await message.answer(
+        preview_text,
+        reply_markup=get_confirm_broadcast_keyboard(),
+        parse_mode="HTML"
+    )
+    
+    await state.set_state(BroadcastStates.waiting_for_confirmation)
+
+@router.callback_query(F.data == "confirm_broadcast")
+async def confirm_broadcast(callback: CallbackQuery, state: FSMContext, bot: Bot):
+    """Подтверждение рассылки"""
+    global broadcast_in_progress, broadcast_cancelled, broadcast_stats, broadcast_message
+    
+    if callback.from_user.id not in Config.ADMIN_IDS:
+        await callback.answer("❌ У вас нет прав для выполнения этого действия", show_alert=True)
+        return
+    
+    if not broadcast_message:
+        await callback.answer("❌ Сообщение для рассылки не найдено", show_alert=True)
+        return
+    
+    # Получаем всех пользователей
+    users = await qu.get_all_users()
+    total_users = len(users)
+    
+    if total_users == 0:
+        await callback.message.answer("❌ Нет пользователей для рассылки")
+        await state.clear()
+        return
+    
+    # Инициализируем статистику
+    broadcast_stats = {
+        'total': total_users,
+        'success': 0,
+        'failed': 0,
+        'start_time': datetime.now(),
+        'end_time': None
+    }
+    
+    broadcast_in_progress = True
+    broadcast_cancelled = False
+    
+    # Создаем сообщение со статистикой
+    stats_message = await callback.message.answer(
+        f"📊 <b>Начало рассылки</b>\n\n"
+        f"👥 Всего пользователей: {total_users}\n"
+        f"⏳ Прогресс: {get_progress_bar(0, total_users)}\n"
+        f"✅ Успешно: 0\n"
+        f"❌ Ошибок: 0\n"
+        f"⏱ Время: 0 сек",
+        reply_markup=get_cancel_broadcast_progress_keyboard(),
+        parse_mode="HTML"
+    )
+    
+    # Отправляем сообщение всем пользователям
+    for i, user in enumerate(users, 1):
         if broadcast_cancelled:
             break
+            
         try:
-            keyboard = None
-            if button_text and button_url:
-                keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-                    [types.InlineKeyboardButton(text=button_text, url=button_url)]
-                ])
-            if photo:
-                logging.info(f"Отправка фото пользователю {user.user_id}")
-                caption = str(message)
-                if len(caption) > 1024:
-                    caption = caption[:1021] + "..."
-                await bot.send_photo(user.user_id, photo, caption=caption, reply_markup=keyboard, parse_mode="HTML")
+            # Копируем сообщение с сохранением форматирования
+            if broadcast_message.photo:
+                await bot.send_photo(
+                    user.user_id,
+                    broadcast_message.photo[-1].file_id,
+                    caption=broadcast_message.html_text if broadcast_message.caption_entities else broadcast_message.caption,
+                    parse_mode="HTML" if broadcast_message.caption_entities else None,
+                    reply_markup=broadcast_message.reply_markup
+                )
             else:
-                logging.info(f"Отправка сообщения пользователю {user.user_id}")
-                await bot.send_message(user.user_id, message, reply_markup=keyboard, parse_mode="HTML")
-            success_count += 1
-        except TelegramForbiddenError as e:
-            logging.warning(f"Не удалось отправить сообщение пользователю {user.user_id}: {e}")
-            failure_count += 1
-        except TelegramBadRequest as e:
-            if "message is not modified" in str(e):
-                logging.info("Message is not modified, skipping error.")
-            else:
-                logging.error(f"Ошибка при отправке сообщения пользователю {user.user_id}: {e}")
-            failure_count += 1
+                # Проверяем наличие форматирования в тексте
+                parse_mode = "HTML" if broadcast_message.entities else None
+                await bot.send_message(
+                    user.user_id,
+                    broadcast_message.html_text if broadcast_message.entities else broadcast_message.text,
+                    parse_mode=parse_mode,
+                    reply_markup=broadcast_message.reply_markup
+                )
+            broadcast_stats['success'] += 1
         except Exception as e:
-            logging.error(f"Ошибка при отправке сообщения пользователю {user.user_id}: {e}")
-            failure_count += 1
+            logger.error(f"Failed to send broadcast to user {user.user_id}: {e}")
+            broadcast_stats['failed'] += 1
         
-        if (i + 1) % 100 == 0:
-            try:
-                if progress_message_id is None:
-                    progress_message = await bot.send_message(
-                        Config.ADMIN_IDS[0],
-                        f"Рассылка продолжается...\nУспешно: {success_count}\nНе удалось: {failure_count}",
-                        reply_markup=cancel_keyboard
-                    )
-                    progress_message_id = progress_message.message_id
-                else:
-                    await bot.edit_message_text(
-                        chat_id=Config.ADMIN_IDS[0],
-                        message_id=progress_message_id,
-                        text=f"Рассылка продолжается...\nУспешно: {success_count}\nНе удалось: {failure_count}",
-                        reply_markup=cancel_keyboard
-                    )
-            except TelegramForbiddenError as e:
-                logging.warning(f"Не удалось отправить сообщение о прогрессе: {e}")
+        # Обновляем статистику каждые 10 сообщений или в конце
+        if i % 10 == 0 or i == total_users:
+            elapsed_time = (datetime.now() - broadcast_stats['start_time']).total_seconds()
+            await stats_message.edit_text(
+                f"📊 <b>Рассылка в процессе</b>\n\n"
+                f"👥 Всего пользователей: {total_users}\n"
+                f"⏳ Прогресс: {get_progress_bar(i, total_users)}\n"
+                f"✅ Успешно: {broadcast_stats['success']}\n"
+                f"❌ Ошибок: {broadcast_stats['failed']}\n"
+                f"⏱ Время: {int(elapsed_time)} сек",
+                reply_markup=get_cancel_broadcast_progress_keyboard(),
+                parse_mode="HTML"
+            )
         
-        await asyncio.sleep(0.05)  # Задержка для отправки 50 сообщений в секунду
+        # Небольшая задержка между сообщениями
+        await asyncio.sleep(0.1)
     
-    try:
-        if progress_message_id is not None:
-            await bot.edit_message_text(
-                chat_id=Config.ADMIN_IDS[0],
-                message_id=progress_message_id,
-                text=f"Рассылка завершена.\nУспешно: {success_count}\nНе удалось: {failure_count}"
-            )
-        else:
-            await bot.send_message(
-                Config.ADMIN_IDS[0],
-                f"Рассылка завершена.\nУспешно: {success_count}\nНе удалось: {failure_count}"
-            )
-    except TelegramForbiddenError as e:
-        logging.warning(f"Не удалось отправить сообщение о завершении рассылки: {e}")
+    # Завершаем рассылку
+    broadcast_in_progress = False
+    broadcast_stats['end_time'] = datetime.now()
+    total_time = (broadcast_stats['end_time'] - broadcast_stats['start_time']).total_seconds()
     
-    return success_count, failure_count
-
-async def preview_broadcast(bot: Bot, chat_id: int, message_text: str, photo: str = None, button_text: str = None, button_url: str = None):
-    keyboard = None
-    if button_text and button_url:
-        keyboard = types.InlineKeyboardMarkup(inline_keyboard=[
-            [types.InlineKeyboardButton(text=button_text, url=button_url)]
-        ])
-    if photo:
-        caption = message_text
-        if len(caption) > 1024:
-            caption = caption[:1021] + "..."
-        await bot.send_photo(chat_id, photo, caption=caption, reply_markup=keyboard, parse_mode="HTML")
+    if broadcast_cancelled:
+        final_message = "❌ Рассылка отменена"
     else:
-        await bot.send_message(chat_id, message_text, reply_markup=keyboard, parse_mode="HTML")
-
-async def cancel_broadcast():
-    global broadcast_cancelled
-    broadcast_cancelled = True
-
-@router.callback_query(F.data == "mailing")
-async def broadcast_message_handler(callback_query: CallbackQuery, state: FSMContext):
-    await callback_query.message.answer("📢 Пожалуйста, введите текст сообщения для рассылки:", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-    ]))
-    await state.set_state(ConfigStates.waiting_for_broadcast_message)
-
-@router.message(ConfigStates.waiting_for_broadcast_message)
-async def broadcast_message_handler(message: Message, state: FSMContext):
-    await state.update_data(broadcast_message=message.html_text)
-    await message.answer("📷 Пожалуйста, отправьте фото для рассылки (или напишите 'нет', если фото не требуется):", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-    ]))
-    await state.set_state(ConfigStates.waiting_for_broadcast_photo)
-
-@router.message(ConfigStates.waiting_for_broadcast_photo)
-async def broadcast_photo_handler(message: Message, state: FSMContext):
-    if message.text and message.text.lower() == 'нет':
-        await state.update_data(broadcast_photo=None)
-    else:
-        await state.update_data(broadcast_photo=message.photo[-1].file_id if message.photo else None)
-
-    await message.answer("🔗 Пожалуйста, введите текст кнопки и URL в формате 'текст - ссылка' (или напишите 'нет', если кнопка не требуется):", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-    ]))
-    await state.set_state(ConfigStates.waiting_for_broadcast_button)
-
-@router.message(ConfigStates.waiting_for_broadcast_button)
-async def broadcast_button_handler(message: Message, state: FSMContext):
-    if message.text and message.text.lower() == 'нет':
-        await state.update_data(broadcast_button_text=None, broadcast_button_url=None)
-    else:
-        try:
-            # Разделяем текст и ссылку по знаку "-"
-            parts = message.text.split("-", 1)
-            if len(parts) != 2:
-                raise ValueError("Неправильный формат кнопки")
-            
-            button_text = parts[0].strip()
-            button_url = parts[1].strip()
-            
-            if not button_text or not button_url:
-                raise ValueError("Текст кнопки и ссылка не могут быть пустыми")
-                
-            await state.update_data(broadcast_button_text=button_text, broadcast_button_url=button_url)
-        except ValueError as e:
-            await message.answer(f"❌ Ошибка: {str(e)}. Пожалуйста, введите текст кнопки и URL в формате 'текст - ссылка' (или напишите 'нет', если кнопка не требуется).", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-                [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-            ]))
-            return
-
-    data = await state.get_data()
-    broadcast_message_text = data.get("broadcast_message")
-    broadcast_photo = data.get("broadcast_photo")
-    broadcast_button_text = data.get("broadcast_button_text")
-    broadcast_button_url = data.get("broadcast_button_url")
-
-    await preview_broadcast(
-        bot=message.bot,
-        chat_id=message.chat.id,
-        message_text=broadcast_message_text,
-        photo=broadcast_photo,
-        button_text=broadcast_button_text,
-        button_url=broadcast_button_url
+        final_message = "✅ Рассылка завершена"
+    
+    await stats_message.edit_text(
+        f"{final_message}\n\n"
+        f"📊 <b>Итоговая статистика</b>\n\n"
+        f"👥 Всего пользователей: {total_users}\n"
+        f"✅ Успешно: {broadcast_stats['success']}\n"
+        f"❌ Ошибок: {broadcast_stats['failed']}\n"
+        f"⏱ Общее время: {int(total_time)} сек\n"
+        f"📈 Процент доставки: {broadcast_stats['success'] / total_users * 100:.1f}%",
+        reply_markup=None,
+        parse_mode="HTML"
     )
+    
+    await state.clear()
+    broadcast_message = None
 
-    keyboard = InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="✅ Запустить рассылку", callback_data="start_broadcast")],
-        [InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="cancel_broadcast")],
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-    ])
-    await message.answer("Предварительный просмотр рассылки завершен. Вы хотите запустить рассылку?", reply_markup=keyboard)
-
-@router.callback_query(F.data == "start_broadcast")
-async def start_broadcast_handler(callback_query: CallbackQuery, state: FSMContext):
-    data = await state.get_data()
-    broadcast_message_text = data.get("broadcast_message")
-    broadcast_photo = data.get("broadcast_photo")
-    broadcast_button_text = data.get("broadcast_button_text")
-    broadcast_button_url = data.get("broadcast_button_url")
-
-    await callback_query.message.edit_text("📢 Рассылка запущена.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="❌ Отменить рассылку", callback_data="cancel_broadcast")]
-    ]))
-    await broadcast_message(
-        bot=callback_query.bot,
-        message=broadcast_message_text,
-        photo=broadcast_photo,
-        button_text=broadcast_button_text,
-        button_url=broadcast_button_url
+@router.callback_query(F.data == "cancel_broadcast_preview")
+async def cancel_broadcast_preview(callback: CallbackQuery, state: FSMContext):
+    """Отмена рассылки на этапе предпросмотра"""
+    if callback.from_user.id not in Config.ADMIN_IDS:
+        await callback.answer("❌ У вас нет прав для выполнения этого действия", show_alert=True)
+        return
+    
+    await callback.message.edit_text(
+        "❌ Рассылка отменена",
+        reply_markup=None
     )
     await state.clear()
-    await callback_query.answer()
+    broadcast_message = None
 
-@router.callback_query(F.data == "cancel_broadcast")
-async def cancel_broadcast_handler(callback_query: CallbackQuery, state: FSMContext):
-    await cancel_broadcast()
-    await callback_query.message.edit_text("❌ Рассылка отменена.", reply_markup=InlineKeyboardMarkup(inline_keyboard=[
-        [InlineKeyboardButton(text="🔙 Назад", callback_data="admin_panel")]
-    ]))
-    await state.clear()
-    await callback_query.answer()
+def get_progress_bar(current: int, total: int, width: int = 20) -> str:
+    """
+    Создает визуальный индикатор прогресса.
+    
+    Args:
+        current (int): Текущее значение
+        total (int): Общее значение
+        width (int): Ширина индикатора
+        
+    Returns:
+        str: Строка с индикатором прогресса
+    """
+    progress = int(width * current / total)
+    bar = "█" * progress + "░" * (width - progress)
+    percentage = current / total * 100
+    return f"{bar} {percentage:.1f}%" 

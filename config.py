@@ -17,7 +17,7 @@ class Config:
 
     CHAT_URL = os.getenv("CHAT_URL")
     REVIEWS_URL = os.getenv("REVIEWS_URL")
-
+    LOG = os.getenv("LOG")
 
     
     DATABASE_URL = (

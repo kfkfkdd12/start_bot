@@ -11,15 +11,17 @@ from aiogram.types import (
 import time
 import asyncio
 import logging
+from ..database import db_queries as qu
 
 logger = logging.getLogger('bot')
 
 # Сервис который будет проверять подписки пользователей на нужные нам каналы
 class UserSubscribeService:
+    # Делаем список статическим на уровне класса
+    join_requests = []  # {"user_id": 123456789, "time": time.time(), "channel_id": 12312}
+
     def __init__(self):
-        self.join_requests = (
-            []
-        )  # {"user_id": 123456789, "time": time.time(), "channel_id": 12312}
+        pass  # Убираем инициализацию списка из конструктора
 
     async def is_user_subscribed(self, user_id: int, channel_id: int) -> bool:
         """
@@ -30,6 +32,8 @@ class UserSubscribeService:
         :return: True, если пользователь подписан или подал заявку, иначе False.
         """
         try:
+            logger.info(f"Проверка подписки: user_id={user_id}, channel_id={channel_id}")
+            
             member: ChatMember = await bot.get_chat_member(
                 chat_id=channel_id, user_id=user_id
             )
@@ -40,19 +44,23 @@ class UserSubscribeService:
                 "creator",
                 "restricted",
             ]:
-                # Проверяем не подавал ли человек заявку на вступление, и удаляем из массива старые данные которые там больше часу
+                # Проверяем не подавал ли человек заявку на вступление
                 for join_request in self.join_requests:
+                    logger.info(f"Проверяем заявку: {join_request}")
                     if (
                         join_request["user_id"] == user_id
                         and join_request["channel_id"] == channel_id
                     ):
-                        if join_request["time"] + 3600 > time.time():
+                        if join_request["time"] + 300 > time.time():
                             return True
                         else:
+                            logger.info(f"Заявка устарела, удаляем")
                             self.join_requests.remove(join_request)
                             return True
             else:
+                logger.info(f"Пользователь подписан, возвращаем True")
                 return True
+                
             return False
 
         except Exception as e:
@@ -70,6 +78,7 @@ class UserSubscribeService:
             {"user_id": user_id, "time": time.time(), "channel_id": chat_id}
         )
         logger.info(f"Получена заявка на вступление от пользователя {user_id} в канал {chat_id}")
+        logger.info(f"Текущие заявки после добавления: {self.join_requests}")
 
 
 subscribes_service = UserSubscribeService()

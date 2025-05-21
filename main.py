@@ -8,6 +8,9 @@ from app.database.database import create_all_tables
 from app.servise import subscribes_service
 from app.bot import bot, dp  # Импортируем только бота и диспетчер, роутер уже подключен
 from app.user.handlers import r as user_r
+from app.servise.task_handlers import router as task_r
+from app.admin.handlers import router as admin_router  # Добавляем импорт админ-роутера
+from app.servise.broadcast import router as broadcast_router
 # Инициализация colorama
 init()
 
@@ -58,7 +61,9 @@ async def main():
     try:
         #подключаем роутеры
         dp.include_router(user_r)
-
+        dp.include_router(task_r)
+        dp.include_router(admin_router)  # Подключаем админ-роутер
+        dp.include_router(broadcast_router)
         # Проверяем подключение бота
         bot_info = await bot.get_me()
         logger.info(f"Бот успешно подключен: @{bot_info.username}")

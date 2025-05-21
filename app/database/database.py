@@ -52,30 +52,51 @@ class OPChannel(Base):
     id = Column(Integer, primary_key=True)
     channel_id = Column(BigInteger, index=True, nullable=False)
     url = Column(String(255))
-    reward = Column(Float)
     name = Column(String(255))
     limit = Column(Integer, default=10000)
     is_active = Column(Boolean, default=True)
 
 
-class TaskChannel(Base):
-    __tablename__ = 'task_channels'
+class Chanel(Base):
+    __tablename__ = 'chanels'
+    
+    id = Column(Integer, primary_key=True)
+    chanel_id = Column(BigInteger, unique=True, index=True, nullable=False)
+    chanel_name = Column(String(255))
+    link = Column(String(255))
+    note = Column(String(255))
+    is_active = Column(Boolean, default=True)
+    sab = Column(Boolean, default=True)
+    limit = Column(BigInteger)
+    reward = Column(Float)
+
+class UserTask(Base):
+    __tablename__ = 'user_tasks'
+
+    id = Column(Integer, primary_key=True, autoincrement=True)
+    user_id = Column(BigInteger, nullable=False, index=True)
+    task_id = Column(Integer, nullable=False, index=True)
+    completed = Column(Boolean, default=False)
+    completed_at = Column(DateTime)
+
+
+class AdPostShow(Base):
+    """Таблица для отслеживания показов рекламных постов"""
+    __tablename__ = 'ad_post_shows'
 
     id = Column(Integer, primary_key=True)
-    channel_id = Column(BigInteger, index=True, nullable=False)
-    url = Column(String(255))
-    reward = Column(Float)
-    name = Column(String(255))
-    limit = Column(Integer, default=10000)
-    is_active = Column(Boolean, default=True)
-
+    post_id = Column(Integer, nullable=False)
+    shown_at = Column(DateTime, default=datetime.now, nullable=False)
 
 class AdPost(Base):
     __tablename__ = 'ad_posts'
 
     id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)  # Название поста для админа
     url = Column(String(255))
     text = Column(String(255))
+    show_count = Column(Integer, default=0)  # Счетчик показов
+    created_at = Column(DateTime, default=datetime.now)  # Дата создания поста
 
 
 class PromoCode(Base):
@@ -96,6 +117,27 @@ class PromoCodeActivation(Base):
     user_id = Column(Integer, ForeignKey("users.id"), nullable=False)
     promo_code_id = Column(Integer, ForeignKey("promo_codes.id"), nullable=False)
     activated_at = Column(DateTime, default=datetime.utcnow)
+
+class ReferralLink(Base):
+    """Таблица для хранения реферальных ссылок"""
+    __tablename__ = 'referral_links'
+
+    id = Column(Integer, primary_key=True)
+    name = Column(String(255), nullable=False)  # Название ссылки
+    code = Column(String(50), unique=True, nullable=False)  # Уникальный код ссылки
+    created_at = Column(DateTime, default=datetime.now)
+    created_by = Column(Integer, ForeignKey("users.id"), nullable=False)  # ID админа, создавшего ссылку
+    is_active = Column(Boolean, default=True)  # Активна ли ссылка
+    uses_count = Column(Integer, default=0)  # Количество использований
+    last_used_at = Column(DateTime)  # Последнее использование
+
+
+class Settings(Base):
+    """Таблица для хранения настроек бота"""
+    __tablename__ = 'settings'
+
+    id = Column(Integer, primary_key=True)
+    referral_reward = Column(Float, nullable=False, default=3.0)  # Награда за реферала
+    created_at = Column(DateTime, default=datetime.now)
+    updated_at = Column(DateTime, default=datetime.now, onupdate=datetime.now) 
     
-    user = relationship("User", back_populates="promo_activations")
-    promo_code = relationship("PromoCode") 
