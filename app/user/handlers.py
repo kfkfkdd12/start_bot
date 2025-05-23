@@ -294,12 +294,7 @@ async def process_gift_withdrawal(callback_query: CallbackQuery):
         )
         
         # Отправляем уведомление в канал логов
-        log_message = (
-            f"🎁 Новый вывод подарка!\n\n"
-            f"👤 Пользователь: {user.user_id}\n"
-            f"🎯 ID подарка: {gift_id}"
-        )
-        await bot.send_message(Config.LOG, log_message)
+        await notify_admin_about_withdraw(user, gift_id)
         
     except Exception as e:
         logger.error(f"Ошибка при выводе подарка: {e}")
@@ -338,3 +333,87 @@ async def friend_not_counted_info(callback_query: CallbackQuery):
         "✍️ Кроме того, бонус за друга начисляется после того, как он подпишется на спонсоров нашего бота!",
         show_alert=True
     )
+
+async def notify_admin_about_withdraw(user, gift_id):
+    """Отправка уведомления админам о выводе подарка"""
+    log_message = (
+        f"🎁 Новый вывод подарка!\n\n"
+        f"👤 Пользователь: {user.user_id}\n"
+        f"🎯 ID подарка: {gift_id}"
+    )
+    
+    # Создаем клавиатуру с кнопками связи и принятия
+    contact_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(
+                text="💬 Связаться с пользователем",
+                url=f"tg://user?id={user.user_id}"
+            )
+        ],
+        [
+            InlineKeyboardButton(
+                text="✅ Принять",
+                callback_data=f"accept_withdraw_{user.user_id}_{gift_id}"
+            )
+        ]
+    ])
+    
+    # Отправляем сообщение всем админам
+    for admin_id in Config.ADMIN_IDS:
+        try:
+            await bot.send_message(
+                admin_id,
+                log_message,
+                reply_markup=contact_kb
+            )
+        except Exception as e:
+            logging.error(f"Не удалось отправить уведомление админу {admin_id}: {e}")
+
+@r.callback_query(F.data.startswith("accept_withdraw_"))
+async def process_withdraw_accept(callback: CallbackQuery):
+    """Обработка принятия вывода админом"""
+    # Проверяем, является ли пользователь админом
+    if callback.from_user.id not in Config.ADMIN_IDS:
+        await callback.answer("У вас нет прав для этого действия", show_alert=True)
+        return
+    
+    # Получаем данные из callback_data
+    parts = callback.data.split("_")
+    user_id = int(parts[2])  # Третье значение
+    gift_id = parts[3]       # Четвертое значение
+    
+    # Обновляем сообщение админа
+    new_text = (
+        f"🎁 Вывод подарка выполнен!\n\n"
+        f"👤 Пользователь: {user_id}\n"
+        f"🎯 ID подарка: {gift_id}\n"
+        f"✅ Выполнено: {callback.from_user.username}"
+    )
+    
+    # Создаем новую клавиатуру только с кнопкой связи
+    contact_kb = InlineKeyboardMarkup(inline_keyboard=[
+        [InlineKeyboardButton(
+            text="💬 Связаться с пользователем",
+            url=f"tg://user?id={user_id}"
+        )]
+    ])
+    
+    # Обновляем сообщение
+    await callback.message.edit_text(
+        new_text,
+        reply_markup=contact_kb
+    )
+    
+    # Отправляем уведомление пользователю
+    user_notification = (
+        "🎉 Ваш вывод подарка принят!\n\n"
+        "✨ Пожалуйста, оставьте отзыв о нашей работе:\n"
+        f"👉 {Config.OTZIVI_URL}"
+    )
+    
+    try:
+        await bot.send_message(user_id, user_notification)
+    except Exception as e:
+        logging.error(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
+    
+    await callback.answer("Вывод успешно принят!", show_alert=True)
