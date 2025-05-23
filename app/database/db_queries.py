@@ -83,6 +83,27 @@ async def register_user(user_id: int, username: str, referred_by: str):
             session.add(new_user)
             await session.commit()
             
+            # Если регистрация прошла успешно и есть реферальный код, пытаемся обновить счетчик
+            if referred_by:
+                try:
+                    # Обновляем счетчик использования реферальной ссылки
+                    stmt = update(db.ReferralLink).where(
+                        db.ReferralLink.code == referred_by
+                    ).values(
+                        uses_count=db.ReferralLink.uses_count + 1,
+                        last_used_at=datetime.now()
+                    )
+                    await session.execute(stmt)
+                    await session.commit()
+                    logger.info(f"Увеличен счетчик использования реферальной ссылки {referred_by}")
+                except Exception as e:
+                    logger.error(
+                        f"Ошибка при обновлении счетчика реферальной ссылки:\n"
+                        f"- Код: {referred_by}\n"
+                        f"- Пользователь: {user_id}\n"
+                        f"- Ошибка: {str(e)}"
+                    )
+            
             if referrer:
                 logger.info(
                     f"Новый пользователь {user_id} (@{username}) зарегистрирован\n"
