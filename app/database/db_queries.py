@@ -1440,10 +1440,10 @@ async def get_referral_stats(referral_code: str) -> dict:
         
         # Получаем все задания для всех рефералов одним запросом
         if users:
-            user_ids = [user.id for user in users]  # Используем внутренний ID пользователя
+            telegram_ids = [user.user_id for user in users]  # Используем Telegram ID пользователя
             # Подсчитываем начатые задания
             started_stmt = select(func.count()).select_from(db.UserTask).where(
-                db.UserTask.user_id.in_(user_ids)
+                db.UserTask.user_id.in_(telegram_ids)
             )
             started_result = await session.execute(started_stmt)
             started_tasks = started_result.scalar_one() or 0
@@ -1451,7 +1451,7 @@ async def get_referral_stats(referral_code: str) -> dict:
             # Подсчитываем выполненные задания
             completed_stmt = select(func.count()).select_from(db.UserTask).where(
                 and_(
-                    db.UserTask.user_id.in_(user_ids),
+                    db.UserTask.user_id.in_(telegram_ids),
                     db.UserTask.completed == True
                 )
             )
