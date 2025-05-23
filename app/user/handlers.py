@@ -119,6 +119,7 @@ async def check_subscriptions(callback: CallbackQuery):
         )
     else:
         await callback.message.delete()
+        await qu.update_user_op_status(callback.from_user.id, True)
         # Показываем главное меню только после успешной проверки подписок
         await callback.message.answer(
             "✅ Спасибо за подписку! Теперь вы можете пользоваться ботом.",

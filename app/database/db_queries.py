@@ -1406,3 +1406,41 @@ async def toggle_ad_post_status(post_id: int) -> bool:
         logger.error(f"Ошибка при изменении статуса рекламного поста {post_id}: {e}")
         return False
 
+async def update_user_op_status(user_id: int, status: bool = True):
+    """Обновляет статус прохождения опроса пользователем"""
+    async with AsyncSessionFactory() as session:
+        async with session.begin():
+            stmt = update(db.User).where(
+                db.User.user_id == user_id
+            ).values(op_status=status)
+            await session.execute(stmt)
+            await session.commit()
+
+async def get_referral_stats(referral_code: str) -> dict:
+    """Получает расширенную статистику по реферальной ссылке"""
+    async with AsyncSessionFactory() as session:
+        # Получаем всех пользователей с этой реферальной ссылкой
+        stmt = select(db.User).where(db.User.referred_by == referral_code)
+        result = await session.execute(stmt)
+        users = result.scalars().all()
+        
+        total_users = len(users)
+        completed_op = sum(1 for user in users if user.op_status)
+        
+        # Получаем количество выполненных заданий
+        completed_tasks = 0
+        for user in users:
+            # Здесь нужно добавить подсчет выполненных заданий
+            # Предполагая, что у нас есть таблица с выполненными заданиями
+            task_stmt = select(func.count()).select_from(db.CompletedTask).where(
+                db.CompletedTask.user_id == user.user_id
+            )
+            task_result = await session.execute(task_stmt)
+            completed_tasks += task_result.scalar_one() or 0
+        
+        return {
+            "total_users": total_users,
+            "completed_op": completed_op,
+            "completed_tasks": completed_tasks
+        }
+

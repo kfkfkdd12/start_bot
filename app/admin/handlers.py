@@ -457,8 +457,9 @@ async def show_ref_link_details(callback: CallbackQuery, link: dict):
     # Форматируем даты
     created_at = link['created_at'].strftime("%d.%m.%Y %H:%M")
     last_used = link['last_used_at'].strftime("%d.%m.%Y %H:%M") if link['last_used_at'] else "Никогда"
+    # Получаем расширенную статистику
+    stats = await qu.get_referral_stats(link['code'])
     
-    # Формируем текст сообщения
     text = (
         f"🔗 <b>Информация о реферальной ссылке</b>\n\n"
         f"📝 Название: {link['name']}\n"
@@ -466,6 +467,8 @@ async def show_ref_link_details(callback: CallbackQuery, link: dict):
         f"🔗 Ссылка: <code>{full_link}</code>\n\n"
         f"📊 Статистика:\n"
         f"├ Использований: {link['uses_count']}\n"
+        f"├ Прошли оп: {stats['completed_op']}\n"
+        f"├ Выполнено заданий: {stats['completed_tasks']}\n"
         f"├ Последнее использование: {last_used}\n"
         f"├ Создана: {created_at}\n"
         f"└ Статус: {'✅ Активна' if link['is_active'] else '❌ Деактивирована'}\n\n"
