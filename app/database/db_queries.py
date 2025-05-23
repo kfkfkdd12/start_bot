@@ -1434,20 +1434,35 @@ async def get_referral_stats(referral_code: str) -> dict:
         total_users = len(users)
         completed_op = sum(1 for user in users if user.op_status)
         
-        # Получаем количество выполненных заданий
-        completed_tasks = 0
+        # Статистика по заданиям
+        started_tasks = 0  # Начатые задания
+        completed_tasks = 0  # Выполненные задания
+        
         for user in users:
-            # Здесь нужно добавить подсчет выполненных заданий
-            # Предполагая, что у нас есть таблица с выполненными заданиями
-            task_stmt = select(func.count()).select_from(db.CompletedTask).where(
-                db.CompletedTask.user_id == user.user_id
+            # Подсчитываем начатые задания (все записи в UserTask)
+            started_stmt = select(func.count()).select_from(db.UserTask).where(
+                db.UserTask.user_id == user.id
             )
-            task_result = await session.execute(task_stmt)
-            completed_tasks += task_result.scalar_one() or 0
+            started_result = await session.execute(started_stmt)
+            started_tasks += started_result.scalar_one() or 0
+            
+            # Подсчитываем выполненные задания
+            completed_stmt = select(func.count()).select_from(db.UserTask).where(
+                and_(
+                    db.UserTask.user_id == user.id,
+                    db.UserTask.completed == True
+                )
+            )
+            completed_result = await session.execute(completed_stmt)
+            completed_tasks += completed_result.scalar_one() or 0
         
         return {
             "total_users": total_users,
             "completed_op": completed_op,
-            "completed_tasks": completed_tasks
+            "tasks": {
+                "started": started_tasks,  # Общее количество начатых заданий
+                "completed": completed_tasks,  # Количество выполненных заданий
+                "in_progress": started_tasks - completed_tasks  # Задания в процессе (начатые, но не выполненные)
+            }
         }
 
