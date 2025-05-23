@@ -1438,23 +1438,25 @@ async def get_referral_stats(referral_code: str) -> dict:
         started_tasks = 0  # Начатые задания
         completed_tasks = 0  # Выполненные задания
         
-        for user in users:
-            # Подсчитываем начатые задания (все записи в UserTask)
+        # Получаем все задания для всех рефералов одним запросом
+        if users:
+            user_ids = [user.id for user in users]  # Используем внутренний ID пользователя
+            # Подсчитываем начатые задания
             started_stmt = select(func.count()).select_from(db.UserTask).where(
-                db.UserTask.user_id == user.id
+                db.UserTask.user_id.in_(user_ids)
             )
             started_result = await session.execute(started_stmt)
-            started_tasks += started_result.scalar_one() or 0
+            started_tasks = started_result.scalar_one() or 0
             
             # Подсчитываем выполненные задания
             completed_stmt = select(func.count()).select_from(db.UserTask).where(
                 and_(
-                    db.UserTask.user_id == user.id,
+                    db.UserTask.user_id.in_(user_ids),
                     db.UserTask.completed == True
                 )
             )
             completed_result = await session.execute(completed_stmt)
-            completed_tasks += completed_result.scalar_one() or 0
+            completed_tasks = completed_result.scalar_one() or 0
         
         return {
             "total_users": total_users,
@@ -1462,7 +1464,7 @@ async def get_referral_stats(referral_code: str) -> dict:
             "tasks": {
                 "started": started_tasks,  # Общее количество начатых заданий
                 "completed": completed_tasks,  # Количество выполненных заданий
-                "in_progress": started_tasks - completed_tasks  # Задания в процессе (начатые, но не выполненные)
+                "in_progress": started_tasks - completed_tasks  # Задания в процессе
             }
         }
 
