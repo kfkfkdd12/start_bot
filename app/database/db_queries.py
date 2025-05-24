@@ -22,78 +22,85 @@ async def register_user(user_id: int, username: str, referred_by: str):
     Args:
         user_id (int): ID пользователя в Telegram
         username (str): Username пользователя
-        referred_by (str): Telegram ID пользователя, который пригласил
+        referred_by (str): Реферальный код
         
     Returns:
         bool: True если пользователь успешно зарегистрирован, False если пользователь уже существует
     """
     async with AsyncSessionFactory() as session:
-        async with session.begin():
-            # Проверяем, существует ли пользователь
-            stmt = select(db.User).filter(db.User.user_id == user_id)
-            result = await session.execute(stmt)
-            user = result.scalars().first()
-            
-            if user:
-                return False
-            
-            # Если есть реферальный код, находим пригласившего
-            referrer = None
-            if referred_by:
-                try:
-                    stmt = select(db.User).filter(db.User.user_id == int(referred_by))
-                    result = await session.execute(stmt)
-                    referrer = result.scalars().first()
-                    
-                    if referrer:
-                        try:
-                            result = await session.execute(select(db.Settings).order_by(db.Settings.id.desc()).limit(1))
-                            settings = result.scalar_one_or_none()
-                            reward = settings.referral_reward if settings else 3.0                            # Начисляем 3 звезды пригласившему
-                            stmt = update(db.User).where(
-                                db.User.id == referrer.id
-                            ).values(
-                                balans=db.User.balans + reward
-                            )
-                            await session.execute(stmt)
-                            logger.info(f"Начислено {reward} ⭐ пользователю {referrer.user_id} за приглашение {user_id}")
-                        except Exception as e:
-                            logger.error(
-                                f"Ошибка при начислении звезд рефералу:\n"
-                                f"- Реферал: {referrer.user_id} (ID: {referrer.id})\n"
-                                f"- Новый пользователь: {user_id}\n"
-                                f"- Ошибка: {str(e)}"
-                            )
-                except Exception as e:
-                    logger.error(
-                        f"Ошибка при поиске реферала:\n"
-                        f"- Реферальный код: {referred_by}\n"
-                        f"- Новый пользователь: {user_id}\n"
-                        f"- Ошибка: {str(e)}"
-                    )
-                    referrer = None  # Сбрасываем реферала в случае ошибки
-            
-            # Создаем нового пользователя
-            new_user = db.User(
-                user_id=user_id, 
-                username=username,
-                referred_by=referred_by if referrer else None,  # сохраняем реферальный код только если нашли пригласившего
-                created_at=datetime.now()
-            )
-            session.add(new_user)
-            await session.commit()
-            
-            if referrer:
-                logger.info(
-                    f"Новый пользователь {user_id} (@{username}) зарегистрирован\n"
-                    f"Приглашен пользователем {referrer.user_id} (@{referrer.username})\n"
-                    f"Пригласившему начислено {reward} ⭐"
-                )
-            else:
-                logger.info(f"Новый пользователь {user_id} (@{username}) зарегистрирован")
-            
-            return True
+        # Проверяем, существует ли пользователь
+        stmt = select(db.User).where(db.User.user_id == user_id)
+        result = await session.execute(stmt)
+        existing_user = result.scalar_one_or_none()
         
+        if existing_user:
+            return False
+            
+        # Если есть реферальный код, ищем пригласившего для начисления звезд
+        referrer = None
+        if referred_by:
+            try:
+                # Ищем пользователя с таким реферальным кодом
+                stmt = select(db.User).where(db.User.user_id == referred_by)
+                result = await session.execute(stmt)
+                referrer = result.scalar_one_or_none()
+                
+                if referrer:
+                    try:
+                        result = await session.execute(select(db.Settings).order_by(db.Settings.id.desc()).limit(1))
+                        settings = result.scalar_one_or_none()
+                        reward = settings.referral_reward if settings else 3.0
+                        # Начисляем звезды пригласившему
+                        stmt = update(db.User).where(
+                            db.User.id == referrer.id
+                        ).values(
+                            balans=db.User.balans + reward
+                        )
+                        await session.execute(stmt)
+                        logger.info(f"Начислено {reward} ⭐ пользователю {referrer.user_id} за приглашение {user_id}")
+                    except Exception as e:
+                        logger.error(
+                            f"Ошибка при начислении звезд рефералу:\n"
+                            f"- Реферал: {referrer.user_id} (ID: {referrer.id})\n"
+                            f"- Новый пользователь: {user_id}\n"
+                            f"- Ошибка: {str(e)}"
+                        )
+            except Exception as e:
+                logger.error(
+                    f"Ошибка при поиске реферала:\n"
+                    f"- Реферальный код: {referred_by}\n"
+                    f"- Новый пользователь: {user_id}\n"
+                    f"- Ошибка: {str(e)}"
+                )
+        
+        # Создаем нового пользователя
+        new_user = db.User(
+            user_id=user_id, 
+            username=username,
+            referred_by=referred_by,  # Сохраняем реферальный код в любом случае
+            created_at=datetime.now()
+        )
+        session.add(new_user)
+        await session.commit()
+        
+        # Если регистрация прошла успешно и есть реферальный код, пытаемся обновить счетчик
+        if referred_by:
+            try:
+                # Обновляем счетчик использования реферальной ссылки
+                stmt = update(db.ReferralLink).where(
+                    db.ReferralLink.code == referred_by
+                ).values(
+                    uses_count=db.ReferralLink.uses_count + 1,
+                    last_used_at=datetime.now()
+                )
+                await session.execute(stmt)
+                await session.commit()
+                logger.info(f"Увеличен счетчик использования реферальной ссылки {referred_by}")
+            except Exception as e:
+                logger.error(f"Ошибка при обновлении счетчика реферальной ссылки: {e}")
+        
+        return True
+
 async def get_all_users():
     """
     Получает список всех пользователей из базы данных.
@@ -1405,4 +1412,59 @@ async def toggle_ad_post_status(post_id: int) -> bool:
     except Exception as e:
         logger.error(f"Ошибка при изменении статуса рекламного поста {post_id}: {e}")
         return False
+
+async def update_user_op_status(user_id: int, status: bool = True):
+    """Обновляет статус прохождения опроса пользователем"""
+    async with AsyncSessionFactory() as session:
+        async with session.begin():
+            stmt = update(db.User).where(
+                db.User.user_id == user_id
+            ).values(op_status=status)
+            await session.execute(stmt)
+            await session.commit()
+
+async def get_referral_stats(referral_code: str) -> dict:
+    """Получает расширенную статистику по реферальной ссылке"""
+    async with AsyncSessionFactory() as session:
+        # Получаем всех пользователей с этой реферальной ссылкой
+        stmt = select(db.User).where(db.User.referred_by == referral_code)
+        result = await session.execute(stmt)
+        users = result.scalars().all()
+        
+        total_users = len(users)
+        completed_op = sum(1 for user in users if user.op_status)
+        
+        # Статистика по заданиям
+        started_tasks = 0  # Начатые задания
+        completed_tasks = 0  # Выполненные задания
+        
+        # Получаем все задания для всех рефералов одним запросом
+        if users:
+            telegram_ids = [user.user_id for user in users]  # Используем Telegram ID пользователя
+            # Подсчитываем начатые задания
+            started_stmt = select(func.count()).select_from(db.UserTask).where(
+                db.UserTask.user_id.in_(telegram_ids)
+            )
+            started_result = await session.execute(started_stmt)
+            started_tasks = started_result.scalar_one() or 0
+            
+            # Подсчитываем выполненные задания
+            completed_stmt = select(func.count()).select_from(db.UserTask).where(
+                and_(
+                    db.UserTask.user_id.in_(telegram_ids),
+                    db.UserTask.completed == True
+                )
+            )
+            completed_result = await session.execute(completed_stmt)
+            completed_tasks = completed_result.scalar_one() or 0
+        
+        return {
+            "total_users": total_users,
+            "completed_op": completed_op,
+            "tasks": {
+                "started": started_tasks,  # Общее количество начатых заданий
+                "completed": completed_tasks,  # Количество выполненных заданий
+                "in_progress": started_tasks - completed_tasks  # Задания в процессе
+            }
+        }
 

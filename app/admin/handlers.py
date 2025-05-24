@@ -458,7 +458,17 @@ async def show_ref_link_details(callback: CallbackQuery, link: dict):
     created_at = link['created_at'].strftime("%d.%m.%Y %H:%M")
     last_used = link['last_used_at'].strftime("%d.%m.%Y %H:%M") if link['last_used_at'] else "Никогда"
     
-    # Формируем текст сообщения
+    # Получаем расширенную статистику
+    stats = await qu.get_referral_stats(link['code'])
+    
+    # Рассчитываем проценты
+    op_percentage = (stats['completed_op'] / link['uses_count'] * 100) if link['uses_count'] > 0 else 0
+    completed_tasks_percentage = (stats['tasks']['completed'] / stats['tasks']['started'] * 100) if stats['tasks']['started'] > 0 else 0
+    
+    # Форматируем проценты до 1 знака после запятой
+    op_percentage_str = f"{op_percentage:.1f}%"
+    completed_tasks_percentage_str = f"{completed_tasks_percentage:.1f}%"
+    
     text = (
         f"🔗 <b>Информация о реферальной ссылке</b>\n\n"
         f"📝 Название: {link['name']}\n"
@@ -466,6 +476,11 @@ async def show_ref_link_details(callback: CallbackQuery, link: dict):
         f"🔗 Ссылка: <code>{full_link}</code>\n\n"
         f"📊 Статистика:\n"
         f"├ Использований: {link['uses_count']}\n"
+        f"├ Прошли опрос: {stats['completed_op']} ({op_percentage_str})\n"
+        f"├ Задания:\n"
+        f"   ├ Начато: {stats['tasks']['started']}\n"
+        f"   ├ Выполнено: {stats['tasks']['completed']} ({completed_tasks_percentage_str})\n"
+        f"   └ В процессе: {stats['tasks']['in_progress']}\n"
         f"├ Последнее использование: {last_used}\n"
         f"├ Создана: {created_at}\n"
         f"└ Статус: {'✅ Активна' if link['is_active'] else '❌ Деактивирована'}\n\n"
