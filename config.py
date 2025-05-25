@@ -7,7 +7,7 @@ load_dotenv()
 class Config:
     BOT_TOKEN = os.getenv("BOT_TOKEN")
 
-    ADMIN_IDS = [842912105, 6070743826]  # Укажите здесь ID администраторов
+    ADMIN_IDS = [842912105, 7635360930, 923476599]  # Укажите здесь ID администраторов
     
     DB_HOST = os.getenv("DB_HOST")
     DB_PORT = int(os.getenv("DB_PORT", 3306))  # Значение по умолчанию 3306
