@@ -58,7 +58,8 @@ class AdPostMiddleware(BaseMiddleware):
             await event.answer(
                 text=ad_post.text,
                 reply_markup=keyboard,
-                parse_mode='HTML'
+                parse_mode='HTML',
+                disable_web_page_preview=True  # Отключаем предпросмотр ссылок
             )
         except Exception as e:
             logger.error(f"Ошибка при отправке рекламного поста: {e}")
