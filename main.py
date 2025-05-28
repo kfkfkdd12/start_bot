@@ -59,6 +59,10 @@ async def main():
     logger.info(f"{Fore.CYAN}{'~' * 50}\n")
 
     try:
+        # Запускаем сервис подписок
+        await subscribes_service.start()
+        logger.info("Сервис подписок запущен")
+
         #подключаем роутеры
         dp.include_router(user_r)
         dp.include_router(task_r)

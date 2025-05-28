@@ -19,12 +19,20 @@ logger = logging.getLogger('bot')
 class UserSubscribeService:
     # Делаем список статическим на уровне класса
     join_requests = []  # {"user_id": 123456789, "time": time.time(), "channel_id": 12312}
-    CLEANUP_INTERVAL = 30  # Проверка каждую минуту
-    REQUEST_TIMEOUT = 120  # 2 минуты в секундах
+    CLEANUP_INTERVAL = 60  # Проверка каждые 60 секунд
+    REQUEST_TIMEOUT = 300  # 2 минуты в секундах
+    _cleanup_task = None  # Для хранения задачи очистки
 
     def __init__(self):
-        # Запускаем очистку устаревших заявок
-        asyncio.create_task(self._cleanup_old_requests())
+        pass
+
+    async def start(self):
+        """
+        Запускает фоновую задачу очистки заявок
+        """
+        if self._cleanup_task is None:
+            self._cleanup_task = asyncio.create_task(self._cleanup_old_requests())
+            logger.info("Задача очистки заявок запущена")
 
     async def _cleanup_old_requests(self):
         """
@@ -96,4 +104,5 @@ class UserSubscribeService:
         )
 
 
+# Создаем экземпляр сервиса
 subscribes_service = UserSubscribeService()
