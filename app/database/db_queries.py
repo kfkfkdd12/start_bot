@@ -923,6 +923,7 @@ async def get_all_op_channels() -> list:
             {
                 'id': channel.id,
                 'name': channel.name,
+                'button_name': channel.button_name or channel.name,  # Используем button_name если есть, иначе name
                 'channel_id': channel.channel_id,
                 'url': channel.url,
                 'is_active': channel.is_active,
@@ -942,6 +943,7 @@ async def get_op_channel(channel_id: int) -> Optional[dict]:
             return {
                 'id': channel.id,
                 'name': channel.name,
+                'button_name': channel.button_name or channel.name,  # Используем button_name если есть, иначе name
                 'channel_id': channel.channel_id,
                 'url': channel.url,
                 'is_active': channel.is_active,
@@ -949,7 +951,7 @@ async def get_op_channel(channel_id: int) -> Optional[dict]:
             }
         return None
 
-async def add_op_channel(name: str, channel_id: int, url: str) -> tuple[bool, str]:
+async def add_op_channel(name: str, channel_id: int, url: str, button_name: str = None) -> tuple[bool, str]:
     """
     Добавляет новый ОП канал
     
@@ -957,6 +959,7 @@ async def add_op_channel(name: str, channel_id: int, url: str) -> tuple[bool, st
         name (str): Название канала
         channel_id (int): ID канала в Telegram
         url (str): URL канала
+        button_name (str, optional): Название для кнопки. Если не указано, используется name
         
     Returns:
         tuple[bool, str]: (успех операции, сообщение об ошибке)
@@ -974,6 +977,7 @@ async def add_op_channel(name: str, channel_id: int, url: str) -> tuple[bool, st
                 name=name,
                 channel_id=channel_id,
                 url=url,
+                button_name=button_name,  # Добавляем button_name
                 is_active=True
             )
             session.add(new_channel)
@@ -982,6 +986,7 @@ async def add_op_channel(name: str, channel_id: int, url: str) -> tuple[bool, st
             logger.info(
                 f"Добавлен новый ОП канал:\n"
                 f"- Название: {name}\n"
+                f"- Название кнопки: {button_name or name}\n"
                 f"- ID: {channel_id}\n"
                 f"- URL: {url}"
             )

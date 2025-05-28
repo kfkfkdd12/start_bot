@@ -61,7 +61,7 @@ async def start(mes: Message, command: CommandStart):
         # Если channel_id == 0, добавляем канал без проверки подписки
         if channel.channel_id == 0:
             keyboard.append([InlineKeyboardButton(
-                text=channel.name,
+                text=channel.button_name or channel.name,  # Используем button_name если есть, иначе name
                 url=channel.url
             )])
         else:
@@ -69,7 +69,7 @@ async def start(mes: Message, command: CommandStart):
             is_subscribed = await subscribes_service.is_user_subscribed(mes.from_user.id, channel.channel_id)
             if not is_subscribed:
                 keyboard.append([InlineKeyboardButton(
-                    text=channel.name,
+                    text=channel.button_name or channel.name,  # Используем button_name если есть, иначе name
                     url=channel.url
                 )])
     
@@ -115,7 +115,7 @@ async def check_subscriptions(callback: CallbackQuery):
         keyboard = []
         for channel in not_subscribed:
             keyboard.append([InlineKeyboardButton(
-                text=channel.name,
+                text=channel.button_name or channel.name,  # Используем button_name если есть, иначе name
                 url=channel.url
             )])
         keyboard.append([InlineKeyboardButton(

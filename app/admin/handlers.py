@@ -31,6 +31,7 @@ class ReferralLinkCreation(StatesGroup):
 class OPChannelCreation(StatesGroup):
     """Состояния для добавления ОП канала"""
     waiting_for_name = State()  # Ожидание ввода названия
+    waiting_for_button_name = State()  # Ожидание ввода названия кнопки
     waiting_for_channel_id = State()  # Ожидание ввода ID канала
     waiting_for_url = State()  # Ожидание ввода URL
 
@@ -567,6 +568,29 @@ async def process_op_channel_name(message: Message, state: FSMContext):
 
     await state.update_data(name=name)
     await message.answer(
+        "Введите название для кнопки (или нажмите 'Отмена', чтобы использовать название канала):",
+        reply_markup=kb.op_channel_cancel
+    )
+    await state.set_state(OPChannelCreation.waiting_for_button_name)
+
+@router.message(OPChannelCreation.waiting_for_button_name)
+async def process_op_channel_button_name(message: Message, state: FSMContext):
+    """Обработка введенного названия кнопки ОП канала"""
+    if message.from_user.id not in Config.ADMIN_IDS:
+        return
+
+    button_name = message.text.strip()
+    if len(button_name) > 255:
+        await message.answer(
+            "❌ Название кнопки слишком длинное!\n"
+            "Максимальная длина - 255 символов.\n"
+            "Пожалуйста, введите более короткое название или нажмите 'Отмена':",
+            reply_markup=kb.op_channel_cancel
+        )
+        return
+
+    await state.update_data(button_name=button_name)
+    await message.answer(
         "Введите ID канала (например: -1001234567890):",
         reply_markup=kb.op_channel_cancel
     )
@@ -614,9 +638,10 @@ async def process_op_channel_url(message: Message, state: FSMContext):
     data = await state.get_data()
     name = data['name']
     channel_id = data['channel_id']
+    button_name = data.get('button_name')  # Получаем название кнопки, если оно было введено
 
     # Создаем канал
-    success, error = await qu.add_op_channel(name, channel_id, url)
+    success, error = await qu.add_op_channel(name, channel_id, url, button_name)
     
     if not success:
         await message.answer(
@@ -630,6 +655,7 @@ async def process_op_channel_url(message: Message, state: FSMContext):
     await message.answer(
         f"✅ ОП канал успешно добавлен!\n\n"
         f"📝 Название: {name}\n"
+        f"🔘 Название кнопки: {button_name or name}\n"
         f"🆔 ID: {channel_id}\n"
         f"🔗 URL: {url}",
         reply_markup=kb.op_channels_menu
@@ -689,6 +715,7 @@ async def show_op_channel_details(callback: CallbackQuery, channel: dict):
     status = "✅ Активен" if channel['is_active'] else "❌ Неактивен"
     text = (
         f"📢 Канал: {channel['name']}\n"
+        f"🔘 Название кнопки: {channel['button_name'] or channel['name']}\n"
         f"🆔 ID канала: {channel['channel_id']}\n"
         f"🔗 Ссылка: {channel['url']}\n"
         f"📊 Статус: {status}\n"

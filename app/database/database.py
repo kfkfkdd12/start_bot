@@ -53,6 +53,7 @@ class OPChannel(Base):
     channel_id = Column(BigInteger, index=True, nullable=False)
     url = Column(String(255))
     name = Column(String(255))
+    button_name = Column(String(255), nullable=True)  # Название для кнопки
     limit = Column(Integer, default=10000)
     is_active = Column(Boolean, default=True)
 
