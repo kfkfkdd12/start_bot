@@ -48,6 +48,7 @@ main = ReplyKeyboardMarkup(keyboard=[
     [KeyboardButton(text="🏅 Промокод"), 
      KeyboardButton(text="💳 Вывести"),
        KeyboardButton(text="📕 Помощь")],
+    # [KeyboardButton(text="Другие проекты")],
 ], resize_keyboard=True)
 
 
@@ -90,3 +91,10 @@ help_kb = InlineKeyboardMarkup(
         [InlineKeyboardButton(text="❓ Почему не засчитало друга?", callback_data="friend_not_counted")]
     ]
 )
+
+
+
+# other_projects = InlineKeyboardMarkup(inline_keyboard=[
+#     [InlineKeyboardButton(text="🌟 Купить звезды", url="https://t.me/ynpershop_bot?start=RLfWA9Zwmk")]
+# ])
+

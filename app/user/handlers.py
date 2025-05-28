@@ -452,3 +452,8 @@ async def process_withdraw_accept(callback: CallbackQuery):
         logging.error(f"Не удалось отправить уведомление пользователю {user_id}: {e}")
     
     await callback.answer("Вывод успешно принят!", show_alert=True)
+
+
+@r.message(F.text == "Другие проекты")
+async def other_projects(mes: Message):
+    await mes.answer("Другие наши проекты:", reply_markup=kb.other_projects)
