@@ -19,9 +19,30 @@ logger = logging.getLogger('bot')
 class UserSubscribeService:
     # Делаем список статическим на уровне класса
     join_requests = []  # {"user_id": 123456789, "time": time.time(), "channel_id": 12312}
+    CLEANUP_INTERVAL = 30  # Проверка каждую минуту
+    REQUEST_TIMEOUT = 120  # 2 минуты в секундах
 
     def __init__(self):
-        pass  # Убираем инициализацию списка из конструктора
+        # Запускаем очистку устаревших заявок
+        asyncio.create_task(self._cleanup_old_requests())
+
+    async def _cleanup_old_requests(self):
+        """
+        Периодически очищает список заявок от устаревших записей
+        """
+        while True:
+            try:
+                current_time = time.time()
+                # Создаем новый список только с актуальными заявками
+                self.join_requests = [
+                    request for request in self.join_requests
+                    if current_time - request["time"] < self.REQUEST_TIMEOUT
+                ]
+                logger.info(f"Очистка заявок выполнена. Осталось заявок: {len(self.join_requests)}")
+            except Exception as e:
+                logger.error(f"Ошибка при очистке заявок: {e}")
+            
+            await asyncio.sleep(self.CLEANUP_INTERVAL)
 
     async def is_user_subscribed(self, user_id: int, channel_id: int) -> bool:
         """
@@ -32,7 +53,6 @@ class UserSubscribeService:
         :return: True, если пользователь подписан или подал заявку, иначе False.
         """
         try:
-            logger.info(f"Проверка подписки: user_id={user_id}, channel_id={channel_id}")
             
             member: ChatMember = await bot.get_chat_member(
                 chat_id=channel_id, user_id=user_id
@@ -46,7 +66,6 @@ class UserSubscribeService:
             ]:
                 # Проверяем не подавал ли человек заявку на вступление
                 for join_request in self.join_requests:
-                    logger.info(f"Проверяем заявку: {join_request}")
                     if (
                         join_request["user_id"] == user_id
                         and join_request["channel_id"] == channel_id
@@ -54,11 +73,9 @@ class UserSubscribeService:
                         if join_request["time"] + 300 > time.time():
                             return True
                         else:
-                            logger.info(f"Заявка устарела, удаляем")
                             self.join_requests.remove(join_request)
                             return True
             else:
-                logger.info(f"Пользователь подписан, возвращаем True")
                 return True
                 
             return False
@@ -77,8 +94,6 @@ class UserSubscribeService:
         self.join_requests.append(
             {"user_id": user_id, "time": time.time(), "channel_id": chat_id}
         )
-        logger.info(f"Получена заявка на вступление от пользователя {user_id} в канал {chat_id}")
-        logger.info(f"Текущие заявки после добавления: {self.join_requests}")
 
 
 subscribes_service = UserSubscribeService()
