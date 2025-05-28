@@ -58,13 +58,20 @@ async def start(mes: Message, command: CommandStart):
     # Создаем клавиатуру с кнопками каналов
     keyboard = []
     for channel in channels:
-        # Проверяем подписку через сервис
-        is_subscribed = await subscribes_service.is_user_subscribed(mes.from_user.id, channel.channel_id)
-        if not is_subscribed:
+        # Если channel_id == 0, добавляем канал без проверки подписки
+        if channel.channel_id == 0:
             keyboard.append([InlineKeyboardButton(
                 text=channel.name,
                 url=channel.url
             )])
+        else:
+            # Для остальных каналов проверяем подписку
+            is_subscribed = await subscribes_service.is_user_subscribed(mes.from_user.id, channel.channel_id)
+            if not is_subscribed:
+                keyboard.append([InlineKeyboardButton(
+                    text=channel.name,
+                    url=channel.url
+                )])
     
     # Добавляем кнопку проверки только если есть неподписанные каналы
     if keyboard:
