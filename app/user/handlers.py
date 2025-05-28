@@ -171,7 +171,6 @@ async def profile(mes: Message):
     await mes.answer_photo(
         photo=FSInputFile(photo_path),
         caption=text,
-        reply_markup=kb.profile
     )
 
 
