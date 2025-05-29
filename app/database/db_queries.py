@@ -1086,7 +1086,8 @@ async def get_all_task_channels() -> list:
             'total_limit': channel.Chanel.limit + int(channel.completed_count or 0),  # Общее количество заданий
             'current_limit': channel.Chanel.limit,  # Текущий оставшийся лимит
             'reward': channel.Chanel.reward,
-            'completed_count': int(channel.completed_count or 0)
+            'completed_count': int(channel.completed_count or 0),
+            'sab': channel.Chanel.sab  # Добавляем тип канала
         } for channel in channels]
 
 async def get_task_channel(channel_id: int) -> Optional[dict]:
@@ -1118,11 +1119,12 @@ async def get_task_channel(channel_id: int) -> Optional[dict]:
                 'total_limit': channel.Chanel.limit + int(channel.completed_count or 0),  # Общее количество заданий
                 'current_limit': channel.Chanel.limit,  # Текущий оставшийся лимит
                 'reward': channel.Chanel.reward,
-                'completed_count': int(channel.completed_count or 0)
+                'completed_count': int(channel.completed_count or 0),
+                'sab': channel.Chanel.sab  # Добавляем тип канала
             }
         return None
 
-async def add_task_channel(name: str, channel_id: int, url: str, limit: int, reward: float) -> tuple[bool, str]:
+async def add_task_channel(name: str, channel_id: int, url: str, limit: int, reward: float, sab: bool = True) -> tuple[bool, str]:
     """
     Добавляет новый канал заданий
     
@@ -1132,6 +1134,7 @@ async def add_task_channel(name: str, channel_id: int, url: str, limit: int, rew
         url (str): URL канала
         limit (int): Лимит выполнений
         reward (float): Награда за выполнение
+        sab (bool): Тип канала (True - на подписчиков, False - на заявки)
         
     Returns:
         tuple[bool, str]: (успех операции, сообщение об ошибке)
@@ -1151,18 +1154,21 @@ async def add_task_channel(name: str, channel_id: int, url: str, limit: int, rew
                 link=url,
                 limit=limit,
                 reward=reward,
-                is_active=True
+                is_active=True,
+                sab=sab  # Добавляем тип канала
             )
             session.add(new_channel)
             await session.commit()
             
+            channel_type = "подписчиков" if sab else "заявок"
             logger.info(
                 f"Добавлен новый канал заданий:\n"
                 f"- Название: {name}\n"
                 f"- ID: {channel_id}\n"
                 f"- URL: {url}\n"
                 f"- Лимит: {limit}\n"
-                f"- Награда: {reward} ⭐"
+                f"- Награда: {reward} ⭐\n"
+                f"- Тип: на {channel_type}"
             )
             
             return True, ""

@@ -40,6 +40,7 @@ class TaskChannelCreation(StatesGroup):
     waiting_for_name = State()  # Ожидание ввода названия
     waiting_for_channel_id = State()  # Ожидание ввода ID канала
     waiting_for_url = State()  # Ожидание ввода URL
+    waiting_for_type = State()  # Ожидание выбора типа (подписчики/заявки)
     waiting_for_limit = State()  # Ожидание ввода лимита
     waiting_for_reward = State()  # Ожидание ввода награды
 
@@ -843,7 +844,34 @@ async def process_task_channel_url(message: Message, state: FSMContext):
         return
 
     await state.update_data(url=url)
+    
+    # Создаем клавиатуру для выбора типа канала
+    keyboard = InlineKeyboardMarkup(inline_keyboard=[
+        [
+            InlineKeyboardButton(text="👥 На подписчиков", callback_data="channel_type_sub"),
+            InlineKeyboardButton(text="📝 На заявки", callback_data="channel_type_join")
+        ],
+        [InlineKeyboardButton(text="❌ Отмена", callback_data="cancel_task_channel_creation")]
+    ])
+    
     await message.answer(
+        "Выберите тип канала:",
+        reply_markup=keyboard
+    )
+    await state.set_state(TaskChannelCreation.waiting_for_type)
+
+@router.callback_query(F.data.startswith("channel_type_"), TaskChannelCreation.waiting_for_type)
+async def process_task_channel_type(callback: CallbackQuery, state: FSMContext):
+    """Обработка выбора типа канала"""
+    if callback.from_user.id not in Config.ADMIN_IDS:
+        await callback.answer("⛔️ У вас нет доступа к этой функции", show_alert=True)
+        return
+
+    channel_type = callback.data.split("_")[-1]
+    sab = 1 if channel_type == "sub" else 0
+    
+    await state.update_data(sab=sab)
+    await callback.message.edit_text(
         "Введите лимит выполнений (например: 100):",
         reply_markup=kb.task_channel_cancel
     )
@@ -898,9 +926,10 @@ async def process_task_channel_reward(message: Message, state: FSMContext):
     channel_id = data['channel_id']
     url = data['url']
     limit = data['limit']
+    sab = data['sab']  # Получаем тип канала
 
     # Создаем канал
-    success, error = await qu.add_task_channel(name, channel_id, url, limit, reward)
+    success, error = await qu.add_task_channel(name, channel_id, url, limit, reward, sab)
     
     if not success:
         await message.answer(
@@ -911,13 +940,15 @@ async def process_task_channel_reward(message: Message, state: FSMContext):
         return
 
     # Отправляем подтверждение
+    channel_type = "подписчиков" if sab == 1 else "заявок"
     await message.answer(
         f"✅ Канал заданий успешно добавлен!\n\n"
         f"📝 Название: {name}\n"
         f"🆔 ID: {channel_id}\n"
         f"🔗 URL: {url}\n"
         f"📊 Лимит: {limit}\n"
-        f"💰 Награда: {reward} ⭐",
+        f"💰 Награда: {reward} ⭐\n"
+        f"📌 Тип: на {channel_type}",
         reply_markup=kb.task_channels_menu
     )
 
@@ -973,11 +1004,13 @@ async def handle_task_channel_action(callback: CallbackQuery):
 async def show_task_channel_details(callback: CallbackQuery, channel: dict):
     """Показывает детальную информацию о канале заданий"""
     status = "✅ Активен" if channel['is_active'] else "❌ Неактивен"
+    channel_type = "подписчиков" if channel['sab'] == 1 else "заявок"
     text = (
         f"📝 Канал: {channel['name']}\n"
         f"🆔 ID канала: {channel['channel_id']}\n"
         f"🔗 Ссылка: {channel['url']}\n"
         f"📊 Статус: {status}\n"
+        f"📌 Тип: на {channel_type}\n"
         f"👥 Всего заданий: {channel['total_limit']}\n"
         f"✅ Выполнено: {channel['completed_count']}\n"
         f"📈 Осталось: {channel['current_limit']}\n"
