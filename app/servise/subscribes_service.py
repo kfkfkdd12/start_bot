@@ -87,7 +87,7 @@ class UserSubscribeService:
 
         except Exception as e:
             # Если канал недоступен или произошла ошибка
-            logger.error(f"Ошибка проверки подписки: {e}")
+            logger.error(f"Ошибка проверки подписки на канал {channel_id}: {e}")
             return True
 
     @r.chat_join_request()
