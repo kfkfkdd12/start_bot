@@ -61,32 +61,29 @@ class UserSubscribeService:
         :return: True, если пользователь подписан или подал заявку, иначе False.
         """
         try:
-            
+            # Сначала проверяем наличие заявки в кэше
+            for join_request in self.join_requests:
+                if (
+                    join_request["user_id"] == user_id
+                    and join_request["channel_id"] == channel_id
+                ):
+                    if join_request["time"] + 300 > time.time():
+                        return True
+                    else:
+                        self.join_requests.remove(join_request)
+                        return False
+
+            # Если заявки нет, проверяем подписку
             member: ChatMember = await bot.get_chat_member(
                 chat_id=channel_id, user_id=user_id
             )
 
-            if member.status not in [
+            return member.status in [
                 "member",
                 "administrator",
                 "creator",
                 "restricted",
-            ]:
-                # Проверяем не подавал ли человек заявку на вступление
-                for join_request in self.join_requests:
-                    if (
-                        join_request["user_id"] == user_id
-                        and join_request["channel_id"] == channel_id
-                    ):
-                        if join_request["time"] + 300 > time.time():
-                            return True
-                        else:
-                            self.join_requests.remove(join_request)
-                            return True
-            else:
-                return True
-                
-            return False
+            ]
 
         except Exception as e:
             # Если канал недоступен или произошла ошибка

@@ -389,11 +389,7 @@ async def notify_admin_about_withdraw(user, gift_id):
     # Отправляем сообщение всем админам
     for admin_id in Config.ADMIN_IDS:
         try:
-            # Сначала отправляем стикер
-            await bot.send_sticker(
-                admin_id,
-                sticker=gift_id
-            )
+
             # Затем отправляем сообщение
             await bot.send_message(
                 admin_id,
