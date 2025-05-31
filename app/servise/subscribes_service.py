@@ -1,5 +1,5 @@
-from ..bot import r, bot
-from aiogram import types, F
+from ..bot import  bot
+from aiogram import types, F, Router
 from aiogram.filters import CommandStart
 from aiogram.types import (
     InlineKeyboardButton,
@@ -16,6 +16,8 @@ from ..database import db_queries as qu
 from collections import defaultdict
 
 logger = logging.getLogger('bot')
+
+r = Router()
 
 # Сервис который будет проверять подписки пользователей на нужные нам каналы
 class UserSubscribeService:
