@@ -30,12 +30,11 @@ async def start(mes: Message, command: CommandStart):
     # Регистрируем пользователя
     await qu.register_user(mes.from_user.id, mes.from_user.username, command.args)
     
-    # Получаем активные каналы обоих типов
+    # Получаем активные ОП каналы
     op_channels = await qu.get_active_sponsor_channels()  # ОП каналы
-    task_channels = await qu.get_active_task_channels()   # Каналы заданий
     
     # Если нет активных каналов, сразу показываем стартовое сообщение
-    if not op_channels and not task_channels:
+    if not op_channels:
         await mes.answer(
             "🌟 Добро пожаловать в StarsBot! 🌟\n\n"
             "Вы можете начать пользоваться ботом прямо сейчас!",
@@ -82,29 +81,6 @@ async def start(mes: Message, command: CommandStart):
                 url=channel.url
             )])
     
-    # Обрабатываем каналы заданий
-    for channel in task_channels:
-        # Если channel_id == 0, просто добавляем кнопку без проверок
-        if channel.channel_id == 0:
-            keyboard.append([InlineKeyboardButton(
-                text=channel.button_name or channel.name,
-                url=channel.url
-            )])
-            continue
-            
-        # Для каналов заданий проверяем подписку и заявки
-        is_subscribed = await subscribes_service.is_user_subscribed(
-            mes.from_user.id, 
-            channel.channel_id,
-            is_join_request=not channel.sab  # Если sab=False, значит канал на заявки
-        )
-        
-        if not is_subscribed:
-            keyboard.append([InlineKeyboardButton(
-                text=channel.button_name or channel.name,
-                url=channel.url
-            )])
-    
     # Добавляем кнопку проверки только если есть неподписанные каналы
     if keyboard:
         keyboard.append([InlineKeyboardButton(
@@ -133,9 +109,8 @@ async def start(mes: Message, command: CommandStart):
 @r.callback_query(F.data == "check_subscriptions")
 async def check_subscriptions(callback: CallbackQuery):
     """Проверяет подписки пользователя на каналы"""
-    # Получаем активные каналы обоих типов
+    # Получаем активные ОП каналы
     op_channels = await qu.get_active_sponsor_channels()  # ОП каналы
-    task_channels = await qu.get_active_task_channels()   # Каналы заданий
     
     not_subscribed = []
     
@@ -150,22 +125,6 @@ async def check_subscriptions(callback: CallbackQuery):
             callback.from_user.id, 
             channel.channel_id,
             is_join_request=False  # ОП каналы всегда на подписки
-        )
-        
-        if not is_subscribed:
-            not_subscribed.append(channel)
-    
-    # Проверяем каналы заданий
-    for channel in task_channels:
-        # Пропускаем канал с ID 0
-        if channel.channel_id == 0:
-            continue
-            
-        # Для каналов заданий проверяем подписку и заявки
-        is_subscribed = await subscribes_service.is_user_subscribed(
-            callback.from_user.id, 
-            channel.channel_id,
-            is_join_request=not channel.sab  # Если sab=False, значит канал на заявки
         )
         
         if not is_subscribed:
